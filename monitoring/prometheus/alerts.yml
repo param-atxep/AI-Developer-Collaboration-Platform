@@ -1,0 +1,160 @@
+groups:
+  - name: service_alerts
+    rules:
+      # ---------------------------------------------------------------
+      # HighErrorRate - fires when more than 5% of responses are 5xx
+      # over a 5-minute window for any service.
+      # ---------------------------------------------------------------
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum by (job) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+            /
+            sum by (job) (rate(http_server_requests_seconds_count[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.job }}"
+          description: >-
+            Service {{ $labels.job }} has an error rate of
+            {{ $value | humanizePercentage }} over the last 5 minutes,
+            which exceeds the 5% threshold.
+          runbook_url: "https://wiki.internal/runbooks/high-error-rate"
+
+      # ---------------------------------------------------------------
+      # ServiceDown - fires when an instance has been unreachable for
+      # more than 1 minute.
+      # ---------------------------------------------------------------
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} instance {{ $labels.instance }} is down"
+          description: >-
+            {{ $labels.instance }} of job {{ $labels.job }} has been
+            down for more than 1 minute.
+          runbook_url: "https://wiki.internal/runbooks/service-down"
+
+      # ---------------------------------------------------------------
+      # HighLatency - fires when the p99 response time exceeds 2 s for
+      # 5 consecutive minutes.
+      # ---------------------------------------------------------------
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.99,
+            sum by (job, le) (rate(http_server_requests_seconds_bucket[5m]))
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p99 latency on {{ $labels.job }}"
+          description: >-
+            The 99th-percentile latency for {{ $labels.job }} is
+            {{ $value | humanizeDuration }}, exceeding the 2 s threshold.
+          runbook_url: "https://wiki.internal/runbooks/high-latency"
+
+  - name: infrastructure_alerts
+    rules:
+      # ---------------------------------------------------------------
+      # HighCPU - fires when CPU utilisation stays above 85% for 10 min
+      # ---------------------------------------------------------------
+      - alert: HighCPU
+        expr: |
+          (
+            1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))
+          ) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: >-
+            CPU utilisation on {{ $labels.instance }} has been above 85%
+            for the last 10 minutes (current value: {{ $value | humanizePercentage }}).
+          runbook_url: "https://wiki.internal/runbooks/high-cpu"
+
+      # ---------------------------------------------------------------
+      # HighMemory - fires when memory utilisation exceeds 90% for 5 min
+      # ---------------------------------------------------------------
+      - alert: HighMemory
+        expr: |
+          (
+            1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+          ) > 0.90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: >-
+            Memory utilisation on {{ $labels.instance }} is above 90%
+            (current value: {{ $value | humanizePercentage }}).
+          runbook_url: "https://wiki.internal/runbooks/high-memory"
+
+      # ---------------------------------------------------------------
+      # DiskSpaceLow - fires when free disk space drops below 10%
+      # ---------------------------------------------------------------
+      - alert: DiskSpaceLow
+        expr: |
+          (
+            node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
+            /
+            node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}
+          ) < 0.10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }} ({{ $labels.mountpoint }})"
+          description: >-
+            Disk {{ $labels.mountpoint }} on {{ $labels.instance }} has
+            less than 10% free space remaining
+            ({{ $value | humanizePercentage }} free).
+          runbook_url: "https://wiki.internal/runbooks/disk-space-low"
+
+  - name: middleware_alerts
+    rules:
+      # ---------------------------------------------------------------
+      # KafkaConsumerLag - fires when consumer-group lag exceeds 1 000
+      # messages for 5 minutes.
+      # ---------------------------------------------------------------
+      - alert: KafkaConsumerLag
+        expr: |
+          sum by (consumergroup, topic) (kafka_consumergroup_lag) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka consumer lag is high for {{ $labels.consumergroup }}"
+          description: >-
+            Consumer group {{ $labels.consumergroup }} on topic
+            {{ $labels.topic }} has a lag of {{ $value }} messages,
+            exceeding the threshold of 1 000.
+          runbook_url: "https://wiki.internal/runbooks/kafka-consumer-lag"
+
+      # ---------------------------------------------------------------
+      # DatabaseConnectionPoolExhausted - fires when active DB
+      # connections exceed 90% of the pool maximum.
+      # ---------------------------------------------------------------
+      - alert: DatabaseConnectionPoolExhausted
+        expr: |
+          (
+            hikaricp_connections_active
+            /
+            hikaricp_connections_max
+          ) > 0.90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DB connection pool near exhaustion on {{ $labels.job }}"
+          description: >-
+            Service {{ $labels.job }} is using
+            {{ $value | humanizePercentage }} of its database connection
+            pool ({{ $labels.pool }}). Immediate investigation required.
+          runbook_url: "https://wiki.internal/runbooks/db-pool-exhausted"

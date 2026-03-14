@@ -1,0 +1,297 @@
+# =============================================================================
+# Grafana - Deployment, PVC, Service, Default Datasource
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: foodrescue
+  labels:
+    app: grafana
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: true
+        jsonData:
+          timeInterval: "15s"
+          httpMethod: POST
+        version: 1
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-provider
+  namespace: foodrescue
+  labels:
+    app: grafana
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'default'
+        orgId: 1
+        folder: 'FoodRescue'
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards
+          foldersFromFilesStructure: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-overview
+  namespace: foodrescue
+  labels:
+    app: grafana
+data:
+  foodrescue-overview.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 0.5 },
+                  { "color": "red", "value": 1 }
+                ]
+              }
+            }
+          },
+          "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "options": {},
+          "title": "Service Health Overview",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "up{kubernetes_namespace=\"foodrescue\"}",
+              "legendFormat": "{{kubernetes_pod_name}}"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+          "id": 2,
+          "title": "HTTP Request Rate by Service",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "rate(http_server_requests_seconds_count{kubernetes_namespace=\"foodrescue\"}[5m])",
+              "legendFormat": "{{service}} - {{method}} {{uri}}"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+          "id": 3,
+          "title": "Response Time (p95) by Service",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, rate(http_server_requests_seconds_bucket{kubernetes_namespace=\"foodrescue\"}[5m]))",
+              "legendFormat": "{{service}}"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "id": 4,
+          "title": "JVM Memory Usage",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "jvm_memory_used_bytes{kubernetes_namespace=\"foodrescue\", area=\"heap\"}",
+              "legendFormat": "{{kubernetes_pod_name}} - heap"
+            }
+          ]
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "id": 5,
+          "title": "CPU Usage by Pod",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "process_cpu_usage{kubernetes_namespace=\"foodrescue\"}",
+              "legendFormat": "{{kubernetes_pod_name}}"
+            }
+          ]
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": ["foodrescue", "overview"],
+      "templating": { "list": [] },
+      "time": { "from": "now-1h", "to": "now" },
+      "title": "FoodRescue Platform Overview",
+      "uid": "foodrescue-overview"
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: foodrescue
+  labels:
+    app: grafana
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+      name: http
+  selector:
+    app: grafana
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: foodrescue
+  labels:
+    app: grafana
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: foodrescue
+  labels:
+    app: grafana
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+        runAsNonRoot: true
+      containers:
+        - name: grafana
+          image: grafana/grafana:10.3.1
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: "admin"
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foodrescue-secrets
+                  key: GRAFANA_ADMIN_PASSWORD
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
+            - name: GF_SERVER_ROOT_URL
+              value: "https://foodrescue.example.com/grafana"
+            - name: GF_SERVER_SERVE_FROM_SUB_PATH
+              value: "true"
+            - name: GF_INSTALL_PLUGINS
+              value: "grafana-clock-panel,grafana-simple-json-datasource"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          volumeMounts:
+            - name: grafana-data
+              mountPath: /var/lib/grafana
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: grafana-dashboards-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: grafana-dashboard-overview
+              mountPath: /var/lib/grafana/dashboards
+      volumes:
+        - name: grafana-data
+          persistentVolumeClaim:
+            claimName: grafana-data
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
+        - name: grafana-dashboards-provider
+          configMap:
+            name: grafana-dashboards-provider
+        - name: grafana-dashboard-overview
+          configMap:
+            name: grafana-dashboard-overview

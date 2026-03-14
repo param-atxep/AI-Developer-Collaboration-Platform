@@ -1,0 +1,150 @@
+# =============================================================================
+# PostgreSQL StatefulSet, PVC, and Service
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: foodrescue
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    app: postgres
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: foodrescue
+  labels:
+    app: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      initContainers:
+        - name: init-create-databases
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              cat > /docker-entrypoint-initdb.d/create-databases.sh << 'EOSQL'
+              #!/bin/bash
+              set -e
+              psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-SQL
+                CREATE DATABASE foodrescue_users;
+                CREATE DATABASE foodrescue_food;
+                CREATE DATABASE foodrescue_geolocation;
+                CREATE DATABASE foodrescue_pickup;
+                CREATE DATABASE foodrescue_notifications;
+                CREATE DATABASE foodrescue_analytics;
+                CREATE DATABASE foodrescue_ai;
+
+                -- Grant privileges on all databases
+                GRANT ALL PRIVILEGES ON DATABASE foodrescue_users TO foodrescue;
+                GRANT ALL PRIVILEGES ON DATABASE foodrescue_food TO foodrescue;
+                GRANT ALL PRIVILEGES ON DATABASE foodrescue_geolocation TO foodrescue;
+                GRANT ALL PRIVILEGES ON DATABASE foodrescue_pickup TO foodrescue;
+                GRANT ALL PRIVILEGES ON DATABASE foodrescue_notifications TO foodrescue;
+                GRANT ALL PRIVILEGES ON DATABASE foodrescue_analytics TO foodrescue;
+                GRANT ALL PRIVILEGES ON DATABASE foodrescue_ai TO foodrescue;
+              SQL
+              EOSQL
+              chmod +x /docker-entrypoint-initdb.d/create-databases.sh
+          volumeMounts:
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foodrescue-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: "foodrescue_auth"
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - foodrescue
+                - -d
+                - foodrescue_auth
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - foodrescue
+                - -d
+                - foodrescue_auth
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init-scripts
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          app: postgres
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi

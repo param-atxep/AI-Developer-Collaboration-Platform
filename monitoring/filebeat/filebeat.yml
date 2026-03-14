@@ -1,0 +1,116 @@
+# ===========================================================================
+# Filebeat Configuration - AI Food Waste Redistribution Platform
+# Collects container logs, adds Kubernetes metadata, ships to Logstash.
+# ===========================================================================
+
+filebeat.inputs:
+  # -------------------------------------------------------------------------
+  # Container log files (Kubernetes / Docker)
+  # -------------------------------------------------------------------------
+  - type: container
+    enabled: true
+    paths:
+      - /var/log/containers/*.log
+    # Multiline handling for Java / Spring Boot stack traces.
+    # A new log entry starts with an ISO-8601 timestamp; everything else
+    # (e.g. "at org.springframework...") is appended to the previous entry.
+    multiline.type: pattern
+    multiline.pattern: '^\d{4}-\d{2}-\d{2}[T ]'
+    multiline.negate: true
+    multiline.match: after
+    multiline.max_lines: 500
+    multiline.timeout: 5s
+
+    # Exclude noisy system containers
+    exclude_files:
+      - '.*kube-system.*'
+      - '.*kube-proxy.*'
+
+    # Processor-level fields
+    processors:
+      - add_kubernetes_metadata:
+          host: ${NODE_NAME}
+          matchers:
+            - logs_path:
+                logs_path: "/var/log/containers/"
+
+# ---------------------------------------------------------------------------
+# Autodiscover - dynamically detect new pods and adjust config
+# ---------------------------------------------------------------------------
+filebeat.autodiscover:
+  providers:
+    - type: kubernetes
+      node: ${NODE_NAME}
+      hints.enabled: true
+      hints.default_config:
+        type: container
+        paths:
+          - /var/log/containers/*${data.kubernetes.container.id}.log
+        multiline.type: pattern
+        multiline.pattern: '^\d{4}-\d{2}-\d{2}[T ]'
+        multiline.negate: true
+        multiline.match: after
+
+# ---------------------------------------------------------------------------
+# Global processors
+# ---------------------------------------------------------------------------
+processors:
+  # Add Kubernetes pod / namespace / labels metadata
+  - add_kubernetes_metadata:
+      host: ${NODE_NAME}
+      matchers:
+        - logs_path:
+            logs_path: "/var/log/containers/"
+  # Add the host's metadata (hostname, OS, etc.)
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+  # Add cloud provider metadata when available
+  - add_cloud_metadata: ~
+  # Drop debug-level events in production to reduce volume
+  - drop_event:
+      when:
+        and:
+          - equals:
+              kubernetes.namespace: "production"
+          - contains:
+              message: "DEBUG"
+
+# ---------------------------------------------------------------------------
+# Output: Logstash
+# ---------------------------------------------------------------------------
+output.logstash:
+  hosts: ["logstash:5044"]
+  bulk_max_size: 2048
+  worker: 2
+  loadbalance: true
+  ssl.enabled: false
+
+# ---------------------------------------------------------------------------
+# Logging (Filebeat's own logs)
+# ---------------------------------------------------------------------------
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644
+
+# ---------------------------------------------------------------------------
+# Monitoring - ship Filebeat self-monitoring data to Elasticsearch
+# ---------------------------------------------------------------------------
+monitoring.enabled: true
+monitoring.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+
+# ---------------------------------------------------------------------------
+# General settings
+# ---------------------------------------------------------------------------
+name: "food-waste-platform-filebeat"
+tags: ["food-waste-platform", "kubernetes"]
+
+# Queue settings for back-pressure handling
+queue.mem:
+  events: 4096
+  flush.min_events: 512
+  flush.timeout: 5s

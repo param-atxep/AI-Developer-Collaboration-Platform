@@ -1,0 +1,74 @@
+server:
+  port: 8081
+  shutdown: graceful
+
+spring:
+  application:
+    name: auth-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/foodrescue_auth
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+    open-in-view: false
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+# JWT Configuration
+jwt:
+  # Access token validity: 15 minutes (in milliseconds)
+  access-token-expiration-ms: 900000
+  # Refresh token validity: 7 days (in milliseconds)
+  refresh-token-expiration-ms: 604800000
+  issuer: foodrescue-auth-service
+
+# Eureka Client Configuration
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    hostname: ${HOSTNAME:localhost}
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.value}
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.foodrescue.auth: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

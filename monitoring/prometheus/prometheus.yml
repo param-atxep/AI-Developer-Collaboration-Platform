@@ -1,0 +1,58 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  - job_name: 'api-gateway'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['api-gateway:8080']
+  - job_name: 'auth-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['auth-service:8081']
+  - job_name: 'user-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['user-service:8082']
+  - job_name: 'food-listing-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['food-listing-service:8083']
+  - job_name: 'geolocation-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['geolocation-service:8084']
+  - job_name: 'pickup-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['pickup-service:8085']
+  - job_name: 'notification-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['notification-service:8086']
+  - job_name: 'analytics-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['analytics-service:8087']
+  - job_name: 'ai-prediction-service'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['ai-prediction-service:8088']
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka-exporter:9308']

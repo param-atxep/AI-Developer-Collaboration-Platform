@@ -1,0 +1,104 @@
+server:
+  port: 8088
+
+spring:
+  application:
+    name: ai-prediction-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/foodrescue_ai
+    username: ${DB_USERNAME:foodrescue}
+    password: ${DB_PASSWORD:foodrescue}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 5
+      idle-timeout: 30000
+      connection-timeout: 20000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 25
+        order_inserts: true
+        order_updates: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 5000
+      lettuce:
+        pool:
+          max-active: 10
+          max-idle: 5
+          min-idle: 2
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ai-prediction-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka}
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.value}
+
+# AI model configuration
+ai:
+  model:
+    path: ${AI_MODEL_PATH:models/waste_prediction_model}
+    version: ${AI_MODEL_VERSION:1.0.0}
+    retrain-cron: "0 0 3 * * SUN"  # Retrain every Sunday at 3 AM
+
+# Kafka topic names
+kafka:
+  topics:
+    food-listed: food.listed
+    pickup-completed: pickup.completed
+
+# Actuator health and metrics
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  health:
+    redis:
+      enabled: true
+    db:
+      enabled: true
+
+# Logging
+logging:
+  level:
+    com.foodrescue.ai: INFO
+    org.springframework.kafka: WARN
+    org.hibernate.SQL: WARN
+    org.tensorflow: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

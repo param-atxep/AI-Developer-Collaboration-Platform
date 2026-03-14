@@ -1,0 +1,152 @@
+# =============================================================================
+# Eureka Discovery Service - AI Food Waste Redistribution Platform
+# =============================================================================
+
+server:
+  port: 8761
+
+spring:
+  application:
+    name: discovery-service
+
+  # --- Security credentials for the Eureka dashboard and REST API -----------
+  security:
+    user:
+      name: ${EUREKA_USERNAME:eureka}
+      password: ${EUREKA_PASSWORD:eureka_secret}
+
+# =============================================================================
+# Eureka Configuration (standalone mode - single instance)
+# =============================================================================
+eureka:
+  instance:
+    hostname: localhost
+    # Prefer IP address so containers / VMs register with a routable address
+    prefer-ip-address: true
+    # Metadata map exposed to all registered clients
+    metadata-map:
+      zone: primary
+
+  client:
+    # Standalone mode: do NOT register with itself or fetch the registry
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://${spring.security.user.name}:${spring.security.user.password}@${eureka.instance.hostname}:${server.port}/eureka/
+
+  server:
+    # Disable self-preservation in development so stale instances are evicted
+    # quickly. Enable this in production to tolerate transient network issues.
+    enable-self-preservation: ${EUREKA_SELF_PRESERVATION:true}
+
+    # How often (ms) the server evicts expired instances
+    eviction-interval-timer-in-ms: 5000
+
+    # Renewal threshold percentage before self-preservation kicks in
+    renewal-percent-threshold: 0.85
+
+    # How long to wait (ms) before the server starts accepting traffic after
+    # startup (gives clients time to register)
+    wait-time-in-ms-when-sync-empty: 5
+
+    # Response cache update interval (ms) - lower = faster discovery at the
+    # cost of slightly higher CPU
+    response-cache-update-interval-ms: 5000
+
+    # Delta information refresh interval (ms)
+    delta-retention-timer-interval-in-ms: 5000
+
+# =============================================================================
+# Actuator / Management Endpoints
+# =============================================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: Eureka Discovery Service for the AI Food Waste Redistribution Platform
+    version: 1.0.0
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  level:
+    root: INFO
+    com.netflix.eureka: INFO
+    com.netflix.discovery: INFO
+    com.foodrescue.discovery: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# =============================================================================
+# Profile: peer1  (HA cluster - node 1)
+# Activate with:  --spring.profiles.active=peer1
+# =============================================================================
+---
+spring:
+  config:
+    activate:
+      on-profile: peer1
+
+server:
+  port: 8761
+
+eureka:
+  instance:
+    hostname: peer1
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://${spring.security.user.name}:${spring.security.user.password}@peer2:8762/eureka/
+
+# =============================================================================
+# Profile: peer2  (HA cluster - node 2)
+# Activate with:  --spring.profiles.active=peer2
+# =============================================================================
+---
+spring:
+  config:
+    activate:
+      on-profile: peer2
+
+server:
+  port: 8762
+
+eureka:
+  instance:
+    hostname: peer2
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://${spring.security.user.name}:${spring.security.user.password}@peer1:8761/eureka/
+
+# =============================================================================
+# Profile: docker
+# Activate with:  --spring.profiles.active=docker
+# =============================================================================
+---
+spring:
+  config:
+    activate:
+      on-profile: docker
+
+eureka:
+  instance:
+    hostname: discovery-service
+    prefer-ip-address: true
+  client:
+    service-url:
+      defaultZone: http://${spring.security.user.name}:${spring.security.user.password}@discovery-service:8761/eureka/

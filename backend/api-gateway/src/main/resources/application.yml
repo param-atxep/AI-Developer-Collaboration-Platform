@@ -1,0 +1,201 @@
+server:
+  port: 8080
+  netty:
+    connection-timeout: 30s
+    idle-timeout: 60s
+
+spring:
+  application:
+    name: api-gateway
+
+  # Redis configuration for rate limiting
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 4
+          max-wait: 2000ms
+
+  # Spring Cloud Gateway global settings
+  cloud:
+    gateway:
+      default-filters:
+        - name: RequestRateLimiter
+          args:
+            redis-rate-limiter.replenishRate: 16
+            redis-rate-limiter.burstCapacity: 1000
+            redis-rate-limiter.requestedTokens: 1
+            key-resolver: "#{@userKeyResolver}"
+            deny-empty-key: false
+        - name: RequestSize
+          args:
+            maxSize: 10MB
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://localhost:3001"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowedHeaders:
+              - Authorization
+              - Content-Type
+              - Accept
+              - Origin
+              - X-Requested-With
+              - X-Correlation-Id
+            exposedHeaders:
+              - X-Correlation-Id
+              - X-RateLimit-Remaining
+            allowCredentials: true
+            maxAge: 3600
+      httpclient:
+        connect-timeout: 5000
+        response-timeout: 30s
+        pool:
+          type: elastic
+          max-idle-time: 15s
+          max-life-time: 60s
+      discovery:
+        locator:
+          enabled: false
+          lower-case-service-id: true
+
+# JWT configuration
+jwt:
+  secret: ${JWT_SECRET:dGhpcyBpcyBhIHNhbXBsZSBiYXNlNjQgZW5jb2RlZCBzZWNyZXQga2V5IGZvciBkZXZlbG9wbWVudA==}
+  issuer: ${JWT_ISSUER:foodrescue}
+
+# Eureka client configuration
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka/}
+    registry-fetch-interval-seconds: 10
+    instance-info-replication-interval-seconds: 10
+    initial-instance-info-replication-interval-seconds: 5
+  instance:
+    hostname: ${HOSTNAME:localhost}
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+    metadata-map:
+      zone: primary
+      version: ${project.version:1.0.0-SNAPSHOT}
+
+# Rate limit properties
+gateway:
+  rate-limit:
+    replenish-rate: 16
+    burst-capacity: 1000
+    requested-tokens: 1
+
+# Resilience4j circuit breaker configuration
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 20
+        slidingWindowType: COUNT_BASED
+        minimumNumberOfCalls: 10
+        failureRateThreshold: 50
+        slowCallRateThreshold: 80
+        slowCallDurationThreshold: 10s
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 5
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.reactive.function.client.WebClientResponseException
+    instances:
+      authServiceCB:
+        baseConfig: default
+      userServiceCB:
+        baseConfig: default
+      foodListingServiceCB:
+        baseConfig: default
+      geolocationServiceCB:
+        baseConfig: default
+      pickupServiceCB:
+        baseConfig: default
+      notificationServiceCB:
+        baseConfig: default
+        failureRateThreshold: 60
+      analyticsServiceCB:
+        baseConfig: default
+        failureRateThreshold: 60
+      aiPredictionServiceCB:
+        baseConfig: default
+        slowCallDurationThreshold: 30s
+
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 30s
+        cancelRunningFuture: true
+    instances:
+      authServiceCB:
+        baseConfig: default
+        timeoutDuration: 10s
+      userServiceCB:
+        baseConfig: default
+        timeoutDuration: 10s
+      foodListingServiceCB:
+        baseConfig: default
+        timeoutDuration: 15s
+      geolocationServiceCB:
+        baseConfig: default
+        timeoutDuration: 15s
+      pickupServiceCB:
+        baseConfig: default
+        timeoutDuration: 15s
+      notificationServiceCB:
+        baseConfig: default
+        timeoutDuration: 10s
+      analyticsServiceCB:
+        baseConfig: default
+        timeoutDuration: 30s
+      aiPredictionServiceCB:
+        baseConfig: default
+        timeoutDuration: 60s
+
+# Actuator endpoints for monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,gateway,circuitbreakers,ratelimiters
+  endpoint:
+    health:
+      show-details: when_authorized
+    gateway:
+      enabled: true
+  health:
+    circuitbreakers:
+      enabled: true
+    redis:
+      enabled: true
+
+# Logging configuration
+logging:
+  level:
+    root: INFO
+    com.foodrescue.gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
+    io.github.resilience4j: INFO
+    org.springframework.data.redis: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{correlationId}] %-5level %logger{36} - %msg%n"

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: foodrescue
+  labels:
+    app.kubernetes.io/name: foodrescue
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+    app.kubernetes.io/managed-by: kubectl
+  annotations:
+    description: "AI Food Waste Redistribution Platform namespace"

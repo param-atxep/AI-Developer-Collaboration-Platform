@@ -1,0 +1,96 @@
+# =============================================================================
+# .dockerignore - AI Food Waste Redistribution Platform
+# =============================================================================
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings
+
+# Documentation
+*.md
+docs/
+LICENSE
+
+# Docker files (avoid recursive copies)
+**/Dockerfile
+**/docker-compose*.yml
+**/.dockerignore
+
+# Kubernetes configs
+infrastructure/kubernetes/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+
+# OS generated files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Node.js (frontend)
+frontend/node_modules/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+frontend/dist/
+frontend/coverage/
+frontend/.eslintcache
+
+# Java / Maven (backend)
+**/target/
+**/*.class
+**/*.jar
+**/*.war
+**/*.ear
+**/dependency-reduced-pom.xml
+**/.mvn/wrapper/maven-wrapper.jar
+
+# Logs
+**/*.log
+**/logs/
+
+# Test files
+**/test-results/
+**/coverage/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# Environment and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+**/secrets/
+*.pem
+*.key
+*.crt
+
+# Monitoring configs (handled separately)
+monitoring/
+
+# AI model artifacts (large files)
+ai-model/models/
+ai-model/**/*.h5
+ai-model/**/*.pkl
+ai-model/**/*.pt
+ai-model/**/*.onnx
+
+# Temporary files
+tmp/
+temp/
+*.tmp

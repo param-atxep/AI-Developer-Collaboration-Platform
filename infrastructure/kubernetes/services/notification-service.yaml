@@ -1,0 +1,216 @@
+# =============================================================================
+# Notification Service - Deployment (3 replicas for WebSocket), Service, HPA
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: foodrescue
+  labels:
+    app: notification-service
+    app.kubernetes.io/name: notification-service
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8086
+      targetPort: 8086
+      protocol: TCP
+      name: http
+  selector:
+    app: notification-service
+  # Session affinity for WebSocket connections
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: foodrescue
+  labels:
+    app: notification-service
+    app.kubernetes.io/name: notification-service
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: notification-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: notification-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8086"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        runAsNonRoot: true
+      containers:
+        - name: notification-service
+          image: foodrescue/notification-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8086
+              name: http
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: SPRING_PROFILES_ACTIVE
+            - name: SERVER_PORT
+              value: "8086"
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres-service:5432/foodrescue_notifications"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foodrescue-secrets
+                  key: POSTGRES_PASSWORD
+            - name: EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: EUREKA_URL
+            - name: SPRING_DATA_REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: REDIS_HOST
+            - name: SPRING_DATA_REDIS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: REDIS_PORT
+            - name: SPRING_DATA_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foodrescue-secrets
+                  key: REDIS_PASSWORD
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: KAFKA_BOOTSTRAP_SERVERS
+            - name: SPRING_MAIL_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: MAIL_HOST
+            - name: SPRING_MAIL_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: MAIL_PORT
+            - name: SPRING_MAIL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: foodrescue-secrets
+                  key: MAIL_USERNAME
+            - name: SPRING_MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foodrescue-secrets
+                  key: MAIL_PASSWORD
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8086
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8086
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8086
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: notification-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: notification-service-hpa
+  namespace: foodrescue
+  labels:
+    app: notification-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: notification-service
+  minReplicas: 3
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120

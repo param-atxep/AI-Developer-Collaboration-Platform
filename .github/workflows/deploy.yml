@@ -1,0 +1,394 @@
+# =============================================================================
+# Deployment Workflow - AI Food Waste Redistribution Platform
+# Manual trigger with environment selection; builds, pushes, deploys,
+# smoke-tests, and rolls back on failure.
+# =============================================================================
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      services:
+        description: "Comma-separated list of services to deploy (leave blank for all)"
+        required: false
+        type: string
+        default: ""
+      skip_tests:
+        description: "Skip smoke tests after deploy"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: "us-east-1"
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  JAVA_VERSION: "17"
+  NODE_VERSION: "20"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  # ===========================================================================
+  # Job 1 - Validate & prepare
+  # ===========================================================================
+  prepare:
+    name: "Prepare deployment"
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.resolve.outputs.services }}
+      cluster_name: ${{ steps.resolve.outputs.cluster_name }}
+      namespace: ${{ steps.resolve.outputs.namespace }}
+      deploy_url: ${{ steps.resolve.outputs.deploy_url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resolve deployment parameters
+        id: resolve
+        run: |
+          ALL_SERVICES="api-gateway,auth-service,user-service,food-listing-service,geolocation-service,pickup-service,notification-service,analytics-service,ai-prediction-service,frontend"
+
+          INPUT_SERVICES="${{ github.event.inputs.services }}"
+          if [ -z "$INPUT_SERVICES" ]; then
+            SERVICES="$ALL_SERVICES"
+          else
+            SERVICES="$INPUT_SERVICES"
+          fi
+
+          ENV="${{ github.event.inputs.environment }}"
+
+          if [ "$ENV" == "production" ]; then
+            CLUSTER="food-waste-production"
+            NAMESPACE="production"
+            URL="https://foodwaste.example.com"
+          else
+            CLUSTER="food-waste-staging"
+            NAMESPACE="staging"
+            URL="https://staging.foodwaste.example.com"
+          fi
+
+          echo "services=${SERVICES}" >> "$GITHUB_OUTPUT"
+          echo "cluster_name=${CLUSTER}" >> "$GITHUB_OUTPUT"
+          echo "namespace=${NAMESPACE}" >> "$GITHUB_OUTPUT"
+          echo "deploy_url=${URL}" >> "$GITHUB_OUTPUT"
+
+          echo "### Deployment Plan" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Environment:** ${ENV}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Cluster:** ${CLUSTER}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Namespace:** ${NAMESPACE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Services:** ${SERVICES}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Commit:** ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Production gate
+        if: github.event.inputs.environment == 'production'
+        run: |
+          echo "Production deployment triggered by ${{ github.actor }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Ensure all staging validations have passed before proceeding."
+
+  # ===========================================================================
+  # Job 2 - Build and push images to ECR
+  # ===========================================================================
+  build-push:
+    name: "Build & Push Images"
+    runs-on: ubuntu-latest
+    needs: [prepare]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: "temurin"
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: maven-deploy-${{ hashFiles('**/pom.xml') }}
+          restore-keys: maven-
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: node-deploy-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: node-
+
+      - name: Build and push images
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ needs.prepare.outputs.services }}"
+          TAG="${{ github.sha }}"
+          ENV="${{ github.event.inputs.environment }}"
+
+          for svc in "${SERVICES[@]}"; do
+            svc=$(echo "$svc" | xargs)  # trim whitespace
+            echo "========================================"
+            echo "Building ${svc}"
+            echo "========================================"
+
+            if [ "$svc" == "frontend" ]; then
+              CONTEXT="frontend"
+            else
+              CONTEXT="backend/${svc}"
+            fi
+
+            IMAGE="${{ env.ECR_REGISTRY }}/food-waste/${svc}"
+
+            docker buildx build \
+              --push \
+              --tag "${IMAGE}:${TAG}" \
+              --tag "${IMAGE}:${ENV}-latest" \
+              --build-arg BUILD_VERSION="${TAG}" \
+              --cache-from type=registry,ref="${IMAGE}:buildcache" \
+              --cache-to type=registry,ref="${IMAGE}:buildcache",mode=max \
+              "${CONTEXT}"
+
+            echo "${svc} pushed successfully."
+          done
+
+  # ===========================================================================
+  # Job 3 - Deploy to Kubernetes
+  # ===========================================================================
+  deploy:
+    name: "Deploy to ${{ github.event.inputs.environment }}"
+    runs-on: ubuntu-latest
+    needs: [prepare, build-push]
+    environment:
+      name: ${{ github.event.inputs.environment }}
+      url: ${{ needs.prepare.outputs.deploy_url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ needs.prepare.outputs.cluster_name }}
+
+      - name: Save current revision for rollback
+        id: pre_deploy
+        run: |
+          NAMESPACE="${{ needs.prepare.outputs.namespace }}"
+          IFS=',' read -ra SERVICES <<< "${{ needs.prepare.outputs.services }}"
+
+          REVISIONS=""
+          for svc in "${SERVICES[@]}"; do
+            svc=$(echo "$svc" | xargs)
+            REV=$(kubectl rollout history deployment/${svc} -n ${NAMESPACE} \
+                  --no-headers 2>/dev/null | tail -1 | awk '{print $1}' || echo "0")
+            REVISIONS="${REVISIONS}${svc}=${REV},"
+          done
+
+          echo "revisions=${REVISIONS}" >> "$GITHUB_OUTPUT"
+          echo "Saved revisions: ${REVISIONS}"
+
+      - name: Apply Kubernetes manifests
+        run: |
+          NAMESPACE="${{ needs.prepare.outputs.namespace }}"
+          TAG="${{ github.sha }}"
+
+          # Apply common resources (ConfigMaps, Secrets, etc.)
+          if [ -d "infrastructure/k8s/base" ]; then
+            kubectl apply -f infrastructure/k8s/base/ -n ${NAMESPACE}
+          fi
+
+          # Apply environment-specific overlays
+          if [ -d "infrastructure/k8s/overlays/${{ github.event.inputs.environment }}" ]; then
+            kubectl apply -f infrastructure/k8s/overlays/${{ github.event.inputs.environment }}/ -n ${NAMESPACE}
+          fi
+
+      - name: Update deployment images
+        run: |
+          NAMESPACE="${{ needs.prepare.outputs.namespace }}"
+          TAG="${{ github.sha }}"
+          IFS=',' read -ra SERVICES <<< "${{ needs.prepare.outputs.services }}"
+
+          for svc in "${SERVICES[@]}"; do
+            svc=$(echo "$svc" | xargs)
+            IMAGE="${{ env.ECR_REGISTRY }}/food-waste/${svc}:${TAG}"
+
+            echo "--- Updating ${svc} to ${IMAGE} ---"
+            kubectl set image deployment/${svc} \
+              ${svc}=${IMAGE} \
+              -n ${NAMESPACE}
+          done
+
+      - name: Wait for rollout
+        run: |
+          NAMESPACE="${{ needs.prepare.outputs.namespace }}"
+          IFS=',' read -ra SERVICES <<< "${{ needs.prepare.outputs.services }}"
+
+          FAILED=0
+          for svc in "${SERVICES[@]}"; do
+            svc=$(echo "$svc" | xargs)
+            echo "--- Waiting for ${svc} ---"
+            if ! kubectl rollout status deployment/${svc} \
+                   -n ${NAMESPACE} --timeout=600s; then
+              echo "FAILED: ${svc} rollout did not complete."
+              FAILED=1
+            fi
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error::One or more deployments failed to roll out."
+            exit 1
+          fi
+
+      - name: Run smoke tests
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
+        run: |
+          BASE_URL="${{ needs.prepare.outputs.deploy_url }}"
+
+          echo "=== Health Check ==="
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                      --retry 5 --retry-delay 10 \
+                      "${BASE_URL}/actuator/health")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Health check failed (HTTP ${HTTP_CODE})"
+            exit 1
+          fi
+
+          echo "=== API Gateway ==="
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                      --retry 3 --retry-delay 5 \
+                      "${BASE_URL}/api/v1/health")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::API Gateway health failed (HTTP ${HTTP_CODE})"
+            exit 1
+          fi
+
+          echo "=== Auth Service ==="
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                      --retry 3 --retry-delay 5 \
+                      "${BASE_URL}/api/v1/auth/health")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Auth Service health failed (HTTP ${HTTP_CODE})"
+            exit 1
+          fi
+
+          echo "=== Food Listing Service ==="
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                      --retry 3 --retry-delay 5 \
+                      "${BASE_URL}/api/v1/food-listings/health")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Food Listing Service health failed (HTTP ${HTTP_CODE})"
+            exit 1
+          fi
+
+          echo "All smoke tests passed."
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "::warning::Deployment failed - initiating rollback"
+          NAMESPACE="${{ needs.prepare.outputs.namespace }}"
+          IFS=',' read -ra SERVICES <<< "${{ needs.prepare.outputs.services }}"
+
+          for svc in "${SERVICES[@]}"; do
+            svc=$(echo "$svc" | xargs)
+            echo "--- Rolling back ${svc} ---"
+            kubectl rollout undo deployment/${svc} -n ${NAMESPACE}
+          done
+
+          echo "--- Waiting for rollback to complete ---"
+          for svc in "${SERVICES[@]}"; do
+            svc=$(echo "$svc" | xargs)
+            kubectl rollout status deployment/${svc} \
+              -n ${NAMESPACE} --timeout=300s || true
+          done
+
+          echo "::error::Rollback completed. Please investigate the failure."
+          exit 1
+
+  # ===========================================================================
+  # Job 4 - Post-deploy notification
+  # ===========================================================================
+  notify:
+    name: "Send Notification"
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy]
+    if: always()
+
+    steps:
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "Deployment to *${{ github.event.inputs.environment }}*: ${{ needs.deploy.result == 'success' && 'succeeded' || 'FAILED' }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Deployment ${{ needs.deploy.result == 'success' && 'Succeeded' || 'Failed' }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    { "type": "mrkdwn", "text": "*Environment:*\n${{ github.event.inputs.environment }}" },
+                    { "type": "mrkdwn", "text": "*Triggered by:*\n${{ github.actor }}" },
+                    { "type": "mrkdwn", "text": "*Services:*\n${{ needs.prepare.outputs.services }}" },
+                    { "type": "mrkdwn", "text": "*Commit:*\n${{ github.sha }}" }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": { "type": "plain_text", "text": "View Run" },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

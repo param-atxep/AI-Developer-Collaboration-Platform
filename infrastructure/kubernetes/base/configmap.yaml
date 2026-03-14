@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: foodrescue-config
+  namespace: foodrescue
+  labels:
+    app.kubernetes.io/name: foodrescue-config
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+data:
+  # -------------------------------------------------------------------
+  # Database Configuration
+  # -------------------------------------------------------------------
+  POSTGRES_HOST: "postgres-service"
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: "foodrescue"
+  AUTH_DB_NAME: "foodrescue_auth"
+  USER_DB_NAME: "foodrescue_users"
+  FOOD_DB_NAME: "foodrescue_food"
+  GEOLOCATION_DB_NAME: "foodrescue_geolocation"
+  PICKUP_DB_NAME: "foodrescue_pickup"
+  NOTIFICATION_DB_NAME: "foodrescue_notifications"
+  ANALYTICS_DB_NAME: "foodrescue_analytics"
+  AI_DB_NAME: "foodrescue_ai"
+
+  # -------------------------------------------------------------------
+  # Redis Configuration
+  # -------------------------------------------------------------------
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+
+  # -------------------------------------------------------------------
+  # Kafka Configuration
+  # -------------------------------------------------------------------
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-service:9092"
+
+  # -------------------------------------------------------------------
+  # Service Discovery (Eureka)
+  # -------------------------------------------------------------------
+  EUREKA_URL: "http://discovery-service:8761/eureka/"
+  EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+
+  # -------------------------------------------------------------------
+  # Spring Profiles
+  # -------------------------------------------------------------------
+  SPRING_PROFILES_ACTIVE: "kubernetes"
+
+  # -------------------------------------------------------------------
+  # JPA Configuration
+  # -------------------------------------------------------------------
+  SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+  SPRING_JPA_SHOW_SQL: "false"
+
+  # -------------------------------------------------------------------
+  # Actuator / Management
+  # -------------------------------------------------------------------
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus"
+  MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"
+  MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "true"
+
+  # -------------------------------------------------------------------
+  # Mail Configuration
+  # -------------------------------------------------------------------
+  MAIL_HOST: "smtp.gmail.com"
+  MAIL_PORT: "587"
+
+  # -------------------------------------------------------------------
+  # JWT Configuration
+  # -------------------------------------------------------------------
+  JWT_EXPIRATION_MS: "900000"
+  JWT_REFRESH_EXPIRATION_MS: "604800000"
+
+  # -------------------------------------------------------------------
+  # Logging
+  # -------------------------------------------------------------------
+  LOGGING_LEVEL_ROOT: "INFO"
+  LOGGING_LEVEL_COM_FOODRESCUE: "DEBUG"

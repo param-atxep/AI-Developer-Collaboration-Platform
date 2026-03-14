@@ -1,0 +1,148 @@
+# =============================================================================
+# Discovery Service - Deployment, Service, HPA
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: discovery-service
+  namespace: foodrescue
+  labels:
+    app: discovery-service
+    app.kubernetes.io/name: discovery-service
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8761
+      targetPort: 8761
+      protocol: TCP
+      name: http
+  selector:
+    app: discovery-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery-service
+  namespace: foodrescue
+  labels:
+    app: discovery-service
+    app.kubernetes.io/name: discovery-service
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: discovery-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: discovery-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8761"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        runAsNonRoot: true
+      serviceAccountName: default
+      containers:
+        - name: discovery-service
+          image: foodrescue/discovery-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8761
+              name: http
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: SPRING_PROFILES_ACTIVE
+            - name: SERVER_PORT
+              value: "8761"
+            - name: EUREKA_INSTANCE_HOSTNAME
+              value: "discovery-service"
+            - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
+              value: "false"
+            - name: EUREKA_CLIENT_FETCH_REGISTRY
+              value: "false"
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8761
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8761
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8761
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: discovery-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: discovery-service-hpa
+  namespace: foodrescue
+  labels:
+    app: discovery-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: discovery-service
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

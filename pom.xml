@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.foodrescue</groupId>
+    <artifactId>food-waste-platform</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+
+    <name>AI Food Waste Redistribution Platform</name>
+    <description>Production-grade platform to reduce restaurant food waste by connecting restaurants with NGOs and citizens in real time</description>
+
+    <modules>
+        <module>backend/discovery-service</module>
+        <module>backend/api-gateway</module>
+        <module>backend/auth-service</module>
+        <module>backend/user-service</module>
+        <module>backend/food-listing-service</module>
+        <module>backend/geolocation-service</module>
+        <module>backend/pickup-service</module>
+        <module>backend/notification-service</module>
+        <module>backend/analytics-service</module>
+        <module>backend/ai-prediction-service</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <spring-boot.version>3.2.0</spring-boot.version>
+        <spring-cloud.version>2023.0.0</spring-cloud.version>
+    </properties>
+</project>

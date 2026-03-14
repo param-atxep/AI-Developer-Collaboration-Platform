@@ -1,0 +1,171 @@
+# =============================================================================
+# Analytics Service - Deployment, Service, HPA
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-service
+  namespace: foodrescue
+  labels:
+    app: analytics-service
+    app.kubernetes.io/name: analytics-service
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8087
+      targetPort: 8087
+      protocol: TCP
+      name: http
+  selector:
+    app: analytics-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service
+  namespace: foodrescue
+  labels:
+    app: analytics-service
+    app.kubernetes.io/name: analytics-service
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: analytics-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8087"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        runAsNonRoot: true
+      containers:
+        - name: analytics-service
+          image: foodrescue/analytics-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8087
+              name: http
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: SPRING_PROFILES_ACTIVE
+            - name: SERVER_PORT
+              value: "8087"
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres-service:5432/foodrescue_analytics"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foodrescue-secrets
+                  key: POSTGRES_PASSWORD
+            - name: EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: EUREKA_URL
+            - name: SPRING_DATA_REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: REDIS_HOST
+            - name: SPRING_DATA_REDIS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: REDIS_PORT
+            - name: SPRING_DATA_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foodrescue-secrets
+                  key: REDIS_PASSWORD
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: KAFKA_BOOTSTRAP_SERVERS
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8087
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8087
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8087
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: analytics-service-hpa
+  namespace: foodrescue
+  labels:
+    app: analytics-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: analytics-service
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

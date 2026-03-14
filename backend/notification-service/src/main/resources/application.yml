@@ -1,0 +1,168 @@
+# =============================================================================
+# Notification Service Configuration
+# AI Food Waste Redistribution Platform
+# =============================================================================
+
+server:
+  port: 8086
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: notification-service
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL DataSource
+  # ---------------------------------------------------------------------------
+  datasource:
+    url: jdbc:postgresql://localhost:5432/foodrescue_notifications
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 30000
+      max-lifetime: 1800000
+
+  # ---------------------------------------------------------------------------
+  # JPA / Hibernate
+  # ---------------------------------------------------------------------------
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        default_schema: public
+        jdbc:
+          time_zone: UTC
+          batch_size: 25
+        order_inserts: true
+        order_updates: true
+
+  # ---------------------------------------------------------------------------
+  # Apache Kafka
+  # ---------------------------------------------------------------------------
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notification-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      properties:
+        spring.json.trusted.packages: "*"
+        max.poll.interval.ms: 300000
+        max.poll.records: 100
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    listener:
+      ack-mode: record
+      concurrency: 3
+
+  # ---------------------------------------------------------------------------
+  # Spring Mail (SMTP)
+  # ---------------------------------------------------------------------------
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:noreply@foodrescue.com}
+    password: ${MAIL_PASSWORD:}
+    from: ${MAIL_FROM:noreply@foodrescue.com}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+        transport:
+          protocol: smtp
+
+  # ---------------------------------------------------------------------------
+  # Thymeleaf (email templates)
+  # ---------------------------------------------------------------------------
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    cache: true
+    encoding: UTF-8
+
+  # ---------------------------------------------------------------------------
+  # Jackson
+  # ---------------------------------------------------------------------------
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+# =============================================================================
+# Eureka Client
+# =============================================================================
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka}
+    register-with-eureka: true
+    fetch-registry: true
+    registry-fetch-interval-seconds: 10
+  instance:
+    hostname: ${HOSTNAME:localhost}
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}:${random.uuid}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+
+# =============================================================================
+# Application-specific Configuration
+# =============================================================================
+app:
+  jwt:
+    secret: ${JWT_SECRET:foodrescue-default-secret-key-change-in-production-env-please}
+  email:
+    enabled: ${EMAIL_ENABLED:true}
+
+# =============================================================================
+# Actuator / Management
+# =============================================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  health:
+    db:
+      enabled: true
+    diskSpace:
+      enabled: true
+
+# =============================================================================
+# Logging
+# =============================================================================
+logging:
+  level:
+    root: INFO
+    com.foodrescue.notification: DEBUG
+    org.springframework.web.socket: INFO
+    org.springframework.messaging: INFO
+    org.springframework.kafka: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

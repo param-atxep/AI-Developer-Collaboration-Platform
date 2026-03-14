@@ -1,0 +1,192 @@
+# =============================================================================
+# Food Listing Service - Deployment (3 replicas), Service, HPA
+# High-traffic service: more replicas and aggressive scaling
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: food-listing-service
+  namespace: foodrescue
+  labels:
+    app: food-listing-service
+    app.kubernetes.io/name: food-listing-service
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8083
+      targetPort: 8083
+      protocol: TCP
+      name: http
+  selector:
+    app: food-listing-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: food-listing-service
+  namespace: foodrescue
+  labels:
+    app: food-listing-service
+    app.kubernetes.io/name: food-listing-service
+    app.kubernetes.io/part-of: food-waste-redistribution-platform
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: food-listing-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: food-listing-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8083"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        runAsNonRoot: true
+      containers:
+        - name: food-listing-service
+          image: foodrescue/food-listing-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+              name: http
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: SPRING_PROFILES_ACTIVE
+            - name: SERVER_PORT
+              value: "8083"
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres-service:5432/foodrescue_food"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foodrescue-secrets
+                  key: POSTGRES_PASSWORD
+            - name: EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: EUREKA_URL
+            - name: SPRING_DATA_REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: REDIS_HOST
+            - name: SPRING_DATA_REDIS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: REDIS_PORT
+            - name: SPRING_DATA_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: foodrescue-secrets
+                  key: REDIS_PASSWORD
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: KAFKA_BOOTSTRAP_SERVERS
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              valueFrom:
+                configMapKeyRef:
+                  name: foodrescue-config
+                  key: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 750m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8083
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8083
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: food-listing-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: food-listing-service-hpa
+  namespace: foodrescue
+  labels:
+    app: food-listing-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: food-listing-service
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120

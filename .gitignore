@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+target/
+.gradle/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Build outputs
+dist/
+out/
+*.jar
+*.war
+
+# Docker
+docker-compose.override.yml
+
+# Terraform
+infrastructure/terraform/.terraform/
+infrastructure/terraform/*.tfstate
+infrastructure/terraform/*.tfstate.backup
+infrastructure/terraform/.terraform.lock.hcl
+
+# AI Model artifacts
+ai-model/models/*.h5
+ai-model/models/saved_model/
+ai-model/data/*.csv
+ai-model/__pycache__/
+*.pyc
+
+# Secrets
+*.pem
+*.key
+*.crt
+secrets/
+
+# Test coverage
+coverage/
+htmlcov/
+.coverage
+jacoco/

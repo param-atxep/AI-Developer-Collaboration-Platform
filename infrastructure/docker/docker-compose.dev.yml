@@ -1,0 +1,315 @@
+# docker-compose.dev.yml
+# Development override - use with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+version: "3.9"
+
+services:
+  # ============================================================
+  # Infrastructure - Development Overrides
+  # ============================================================
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: foodrescue_dev
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass redis_dev --appendonly yes
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+
+  # ============================================================
+  # Discovery Service - Debug Mode
+  # ============================================================
+  discovery-service:
+    build:
+      context: ../../backend/discovery-service
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "8761:8761"
+      - "5005:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+      LOGGING_LEVEL_ROOT: DEBUG
+    volumes:
+      - ../../backend/discovery-service/src:/app/src:ro
+      - ../../backend/discovery-service/pom.xml:/app/pom.xml:ro
+      - maven-cache:/root/.m2
+
+  # ============================================================
+  # API Gateway - Debug Mode
+  # ============================================================
+  api-gateway:
+    build:
+      context: ../../backend/api-gateway
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "8080:8080"
+      - "5006:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+      LOGGING_LEVEL_ROOT: DEBUG
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_CLOUD_GATEWAY: TRACE
+    volumes:
+      - ../../backend/api-gateway/src:/app/src:ro
+      - ../../backend/api-gateway/pom.xml:/app/pom.xml:ro
+      - maven-cache:/root/.m2
+
+  # ============================================================
+  # Auth Service - Debug Mode
+  # ============================================================
+  auth-service:
+    build:
+      context: ../../backend/auth-service
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "8081:8081"
+      - "5007:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      SPRING_DATASOURCE_PASSWORD: foodrescue_dev
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+      SPRING_JPA_SHOW_SQL: "true"
+      LOGGING_LEVEL_ROOT: DEBUG
+    volumes:
+      - ../../backend/auth-service/src:/app/src:ro
+      - ../../backend/auth-service/pom.xml:/app/pom.xml:ro
+      - maven-cache:/root/.m2
+
+  # ============================================================
+  # User Service - Debug Mode
+  # ============================================================
+  user-service:
+    build:
+      context: ../../backend/user-service
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "8082:8082"
+      - "5008:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      SPRING_DATASOURCE_PASSWORD: foodrescue_dev
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+      SPRING_JPA_SHOW_SQL: "true"
+      LOGGING_LEVEL_ROOT: DEBUG
+    volumes:
+      - ../../backend/user-service/src:/app/src:ro
+      - ../../backend/user-service/pom.xml:/app/pom.xml:ro
+      - maven-cache:/root/.m2
+
+  # ============================================================
+  # Food Listing Service - Debug Mode
+  # ============================================================
+  food-listing-service:
+    build:
+      context: ../../backend/food-listing-service
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "8083:8083"
+      - "5009:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      SPRING_DATASOURCE_PASSWORD: foodrescue_dev
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+      SPRING_JPA_SHOW_SQL: "true"
+      LOGGING_LEVEL_ROOT: DEBUG
+    volumes:
+      - ../../backend/food-listing-service/src:/app/src:ro
+      - ../../backend/food-listing-service/pom.xml:/app/pom.xml:ro
+      - maven-cache:/root/.m2
+
+  # ============================================================
+  # Geolocation Service - Debug Mode
+  # ============================================================
+  geolocation-service:
+    build:
+      context: ../../backend/geolocation-service
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "8084:8084"
+      - "5010:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      SPRING_DATASOURCE_PASSWORD: foodrescue_dev
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+      SPRING_JPA_SHOW_SQL: "true"
+      LOGGING_LEVEL_ROOT: DEBUG
+    volumes:
+      - ../../backend/geolocation-service/src:/app/src:ro
+      - ../../backend/geolocation-service/pom.xml:/app/pom.xml:ro
+      - maven-cache:/root/.m2
+
+  # ============================================================
+  # Pickup Service - Debug Mode
+  # ============================================================
+  pickup-service:
+    build:
+      context: ../../backend/pickup-service
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "8085:8085"
+      - "5011:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      SPRING_DATASOURCE_PASSWORD: foodrescue_dev
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+      SPRING_JPA_SHOW_SQL: "true"
+      LOGGING_LEVEL_ROOT: DEBUG
+    volumes:
+      - ../../backend/pickup-service/src:/app/src:ro
+      - ../../backend/pickup-service/pom.xml:/app/pom.xml:ro
+      - maven-cache:/root/.m2
+
+  # ============================================================
+  # Notification Service - Debug Mode
+  # ============================================================
+  notification-service:
+    build:
+      context: ../../backend/notification-service
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "8086:8086"
+      - "5012:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      SPRING_DATASOURCE_PASSWORD: foodrescue_dev
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+      SPRING_JPA_SHOW_SQL: "true"
+      LOGGING_LEVEL_ROOT: DEBUG
+    volumes:
+      - ../../backend/notification-service/src:/app/src:ro
+      - ../../backend/notification-service/pom.xml:/app/pom.xml:ro
+      - maven-cache:/root/.m2
+
+  # ============================================================
+  # Analytics Service - Debug Mode
+  # ============================================================
+  analytics-service:
+    build:
+      context: ../../backend/analytics-service
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "8087:8087"
+      - "5013:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      SPRING_DATASOURCE_PASSWORD: foodrescue_dev
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+      SPRING_JPA_SHOW_SQL: "true"
+      LOGGING_LEVEL_ROOT: DEBUG
+    volumes:
+      - ../../backend/analytics-service/src:/app/src:ro
+      - ../../backend/analytics-service/pom.xml:/app/pom.xml:ro
+      - maven-cache:/root/.m2
+
+  # ============================================================
+  # AI Prediction Service - Debug Mode
+  # ============================================================
+  ai-prediction-service:
+    build:
+      context: ../../backend/ai-prediction-service
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "8088:8088"
+      - "5014:5005"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,docker
+      SPRING_DATASOURCE_PASSWORD: foodrescue_dev
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005"
+      SPRING_JPA_SHOW_SQL: "true"
+      LOGGING_LEVEL_ROOT: DEBUG
+    volumes:
+      - ../../backend/ai-prediction-service/src:/app/src:ro
+      - ../../backend/ai-prediction-service/pom.xml:/app/pom.xml:ro
+      - maven-cache:/root/.m2
+
+  # ============================================================
+  # Frontend - Development with Hot Reload
+  # ============================================================
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      target: build
+    ports:
+      - "3000:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8080
+      VITE_WS_URL: ws://localhost:8080/ws
+      NODE_ENV: development
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    volumes:
+      - ../../frontend/src:/app/src:ro
+      - ../../frontend/public:/app/public:ro
+      - ../../frontend/index.html:/app/index.html:ro
+      - ../../frontend/vite.config.ts:/app/vite.config.ts:ro
+      - ../../frontend/tailwind.config.js:/app/tailwind.config.js:ro
+      - ../../frontend/tsconfig.json:/app/tsconfig.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5173/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ============================================================
+  # Monitoring - Dev Overrides
+  # ============================================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+
+volumes:
+  maven-cache:
+    driver: local
