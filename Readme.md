@@ -70,7 +70,7 @@
 | discovery-service    | 8761  | Eureka service registry                             |
 | auth-service         | 8081  | JWT auth, login, registration, RBAC                 |
 | user-service         | 8082  | User profiles, preferences, roles                   |
-| food-listing-service | 8083  | CRUD for food listings, availability tracking        |
+| food-listing-service | 8083  | CRUD for food listings, availability tracking       |
 | geolocation-service  | 8084  | Geo-matching, distance calc, Google Maps integration |
 | pickup-service       | 8085  | Pickup scheduling, status tracking, coordination     |
 | notification-service | 8086  | Real-time alerts via WebSocket, push, email          |
