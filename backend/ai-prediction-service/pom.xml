@@ -85,6 +85,13 @@
             <version>${tensorflow.version}</version>
         </dependency>
 
+        <!-- TensorFlow Java Reflection Compatibility (for org.tensorflow.SavedModelBundle) -->
+        <dependency>
+            <groupId>org.tensorflow</groupId>
+            <artifactId>tensorflow</artifactId>
+            <version>1.15.0</version>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

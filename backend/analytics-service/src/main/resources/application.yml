@@ -1,6 +1,3 @@
-server:
-  port: 8087
-
 spring:
   application:
     name: analytics-service
@@ -9,7 +6,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/foodrescue_analytics
     username: postgres
-    password: postgres
+    password: Param2512
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
@@ -82,12 +79,19 @@ spring:
       fail-on-unknown-properties: false
     default-property-inclusion: non_null
 
+server:
+  port: 8087
+
 # Eureka Client Configuration
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_URI:http://eureka:eureka_secret@localhost:8761/eureka}
     fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.value}
     register-with-eureka: true
     registry-fetch-interval-seconds: 15
   instance:

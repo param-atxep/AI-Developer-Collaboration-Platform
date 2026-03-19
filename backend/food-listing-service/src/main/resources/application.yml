@@ -1,3 +1,4 @@
+
 spring:
   application:
     name: food-listing-service
@@ -6,7 +7,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/food_listing_db
     username: postgres
-    password: postgres
+    password: Param2512
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
@@ -71,7 +72,7 @@ server:
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_URI:http://eureka:eureka_secret@localhost:8761/eureka}
     fetch-registry: true
     register-with-eureka: true
     registry-fetch-interval-seconds: 15

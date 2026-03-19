@@ -4,6 +4,9 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+    define: {
+      global: 'window', // Polyfill for sockjs-client
+    },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

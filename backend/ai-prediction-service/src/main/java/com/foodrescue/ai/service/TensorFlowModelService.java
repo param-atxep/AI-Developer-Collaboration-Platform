@@ -53,7 +53,7 @@ public class TensorFlowModelService {
             // Attempt to load the model using reflection so the service compiles
             // even if TensorFlow native libraries are not present at runtime.
             Class<?> bundleClass = Class.forName("org.tensorflow.SavedModelBundle");
-            var loadMethod = bundleClass.getMethod("load", String.class, String....class);
+            var loadMethod = bundleClass.getMethod("load", String.class, String[].class);
             savedModelBundle = loadMethod.invoke(null, modelPath, new String[]{"serve"});
             modelLoaded.set(true);
             log.info("TensorFlow model loaded successfully from: {} (version: {})", modelPath, modelVersion);

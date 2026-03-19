@@ -1,3 +1,13 @@
+# Eureka client config
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://eureka:eureka_secret@localhost:8761/eureka}
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.value}
 server:
   port: 8088
 
@@ -7,8 +17,8 @@ spring:
 
   datasource:
     url: jdbc:postgresql://localhost:5432/foodrescue_ai
-    username: ${DB_USERNAME:foodrescue}
-    password: ${DB_PASSWORD:foodrescue}
+    username: postgres
+    password: Param2512
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 15

@@ -1,3 +1,13 @@
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka:eureka_secret@localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    hostname: ${HOSTNAME:localhost}
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.value}
 server:
   port: 8081
   shutdown: graceful
@@ -7,9 +17,9 @@ spring:
     name: auth-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/foodrescue_auth
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    url: jdbc:postgresql://localhost:5432/postgres
+    username: postgres
+    password: Param2512
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -41,17 +51,6 @@ jwt:
   refresh-token-expiration-ms: 604800000
   issuer: foodrescue-auth-service
 
-# Eureka Client Configuration
-eureka:
-  client:
-    service-url:
-      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka}
-    register-with-eureka: true
-    fetch-registry: true
-  instance:
-    hostname: ${HOSTNAME:localhost}
-    prefer-ip-address: true
-    instance-id: ${spring.application.name}:${random.value}
 
 # Actuator Configuration
 management:
