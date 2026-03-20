@@ -13,6 +13,7 @@ spring:
 
   jpa:
     hibernate:
+  # Only discovery-service should use port 8761
       ddl-auto: update
     show-sql: false
     properties:

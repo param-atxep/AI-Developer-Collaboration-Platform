@@ -11,6 +11,7 @@ spring:
       timeout: 5000ms
       lettuce:
         pool:
+  # Only discovery-service should use port 8761
           max-active: 16
           max-idle: 8
           min-idle: 4
